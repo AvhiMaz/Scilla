@@ -1,0 +1,2 @@
+rpc-url = "https://api.mainnet-beta.solana.com"
+keypair-path = "~/.config/solana/id.json"
