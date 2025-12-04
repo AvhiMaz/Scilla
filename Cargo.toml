@@ -34,3 +34,4 @@ solana-stake-interface = "2.0.2"
 solana-transaction = "3.0.2"
 
 
+dirs = "5.0"
