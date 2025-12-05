@@ -1,6 +1,4 @@
-use crate::{
-    ScillaContext, ScillaResult, commands::CommandExec
-};
+use crate::{ScillaContext, ScillaResult, commands::CommandExec};
 /// Commands related to configuration like RPC_URL , KEYAPAIR_PATH etc
 #[derive(Debug, Clone)]
 pub enum ConfigCommand {

@@ -1,6 +1,4 @@
-use crate::{
-    ScillaContext, ScillaResult, commands::CommandExec
-};
+use crate::{ScillaContext, ScillaResult, commands::CommandExec};
 /// Commands related to validator/vote account operations
 #[derive(Debug, Clone)]
 pub enum VoteCommand {
