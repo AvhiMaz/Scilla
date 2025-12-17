@@ -9,6 +9,7 @@ use {
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
     dirs,
+    inquire::{Confirm, Select},
     solana_commitment_config::CommitmentLevel,
     std::{fs,fmt, path::PathBuf},
 };
@@ -92,87 +93,134 @@ async fn show_config() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn generate_config() -> anyhow::Result<()> {
+pub async fn generate_config() -> anyhow::Result<()> {
+    // Check if config already exists
+    let config_path = scilla_config_path();
+    if config_path.exists() {
+        println!(
+            "\n{}",
+            style("⚠ Config file already exists!").yellow().bold()
+        );
+        println!(
+            "{}",
+            style(format!("Location: {}", config_path.display())).cyan()
+        );
+        println!(
+            "{}",
+            style("Use the 'Edit' option to modify your existing config.").cyan()
+        );
+        return Ok(());
+    }
+
     println!("\n{}", style("Generate New Config").green().bold());
 
-    // RPC URL with presets
-    let rpc_url = loop {
-        println!("\n{}", style("Select RPC endpoint:").cyan());
-        println!("1. Devnet   ({})", DEVNET_RPC);
-        println!("2. Mainnet  ({})", MAINNET_RPC);
-        println!("3. Testnet  ({})", TESTNET_RPC);
-        println!("4. Custom");
+    // Ask if user wants to use defaults
+    let use_defaults = Confirm::new("Use default config? (Devnet RPC, Confirmed commitment)")
+        .with_default(true)
+        .prompt()?;
 
-        let choice: String = prompt_data("Enter choice (1-4):")?;
+    let config = if use_defaults {
+        let mut config = ScillaConfig::default();
 
-        match choice.as_str() {
-            "1" => break DEVNET_RPC.to_string(),
-            "2" => break MAINNET_RPC.to_string(),
-            "3" => break TESTNET_RPC.to_string(),
-            "4" => break prompt_data("Enter RPC URL:")?,
-            _ => {
-                println!("{}", style("Invalid choice, please try again").red());
-                continue;
-            }
-        };
-    };
+        println!("\n{}", style("Using default configuration:").cyan());
+        println!("  RPC: {}", config.rpc_url);
+        println!("  Commitment: {:?}", config.commitment_level);
+        println!("  Default keypair: {}", config.keypair_path.display());
 
-    // Commitment level
-    let commitment_level = loop {
-        println!("\n{}", style("Select commitment level:").cyan());
-        println!("1. Processed");
-        println!("2. Confirmed");
-        println!("3. Finalized");
-
-        let commitment_choice: String = prompt_data("Enter choice (1-3):")?;
-
-        match commitment_choice.as_str() {
-            "1" => break CommitmentLevel::Processed,
-            "2" => break CommitmentLevel::Confirmed,
-            "3" => break CommitmentLevel::Finalized,
-            _ => {
-                println!("{}", style("Invalid choice, please try again").red());
-                continue;
-            }
-        };
-    };
-
-    // Keypair path
-    let default_keypair = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config/solana/id.json");
-
-    let keypair_path = loop {
-        let keypair_prompt = format!(
-            "Enter keypair path (default: {}): ",
-            default_keypair.display()
-        );
-        let keypair_input: String = prompt_data(&keypair_prompt)?;
-        let keypair_path = if keypair_input.is_empty() {
-            default_keypair.clone()
-        } else {
-            PathBuf::from(keypair_input)
-        };
-
-        if !keypair_path.exists() {
-            println!(
-                "{}",
-                style(format!(
-                    "Keypair file not found at: {}",
-                    keypair_path.display()
-                ))
-                .red()
+        let keypair_path = loop {
+            let keypair_prompt = format!(
+                "\nEnter keypair path (press Enter for default: {}): ",
+                config.keypair_path.display()
             );
-            continue;
+            let keypair_input: String = prompt_data(&keypair_prompt)?;
+
+            let keypair_path = if keypair_input.is_empty() {
+                config.keypair_path.clone()
+            } else {
+                PathBuf::from(keypair_input)
+            };
+
+            if !keypair_path.exists() {
+                println!(
+                    "{}",
+                    style(format!(
+                        "Keypair file not found at: {}",
+                        keypair_path.display()
+                    ))
+                    .red()
+                );
+                continue;
+            }
+
+            break keypair_path;
+        };
+
+        config.keypair_path = keypair_path;
+        config
+    } else {
+        let rpc_options = vec![
+            format!("Devnet ({})", DEVNET_RPC),
+            format!("Mainnet ({})", MAINNET_RPC),
+            format!("Testnet ({})", TESTNET_RPC),
+            "Custom".to_string(),
+        ];
+
+        let rpc_choice = Select::new("Select RPC endpoint:", rpc_options).prompt()?;
+
+        let rpc_url = match rpc_choice.as_str() {
+            s if s.starts_with("Devnet") => DEVNET_RPC.to_string(),
+            s if s.starts_with("Mainnet") => MAINNET_RPC.to_string(),
+            s if s.starts_with("Testnet") => TESTNET_RPC.to_string(),
+            _ => prompt_data("Enter RPC URL:")?,
+        };
+
+        let commitment_options = vec!["Processed", "Confirmed", "Finalized"];
+        let commitment_choice =
+            Select::new("Select commitment level:", commitment_options).prompt()?;
+
+        let commitment_level = match commitment_choice {
+            "Processed" => CommitmentLevel::Processed,
+            "Confirmed" => CommitmentLevel::Confirmed,
+            "Finalized" => CommitmentLevel::Finalized,
+            _ => unreachable!(),
+        };
+
+        let default_keypair = dirs::home_dir()
+            .expect("Could not determine home directory")
+            .join(".config/solana/id.json");
+
+        let keypair_path = loop {
+            let keypair_prompt = format!(
+                "Enter keypair path (default: {}): ",
+                default_keypair.display()
+            );
+            let keypair_input: String = prompt_data(&keypair_prompt)?;
+            let keypair_path = if keypair_input.is_empty() {
+                default_keypair.clone()
+            } else {
+                PathBuf::from(keypair_input)
+            };
+
+            if !keypair_path.exists() {
+                println!(
+                    "{}",
+                    style(format!(
+                        "Keypair file not found at: {}",
+                        keypair_path.display()
+                    ))
+                    .red()
+                );
+                continue;
+            }
+
+            break keypair_path;
+        };
+
+        ScillaConfig {
+            rpc_url,
+            commitment_level,
+            keypair_path,
         }
-
-        break keypair_path;
-    };
-
-    let config = ScillaConfig {
-        rpc_url,
-        commitment_level,
-        keypair_path,
     };
 
     // Write config
@@ -205,94 +253,47 @@ async fn edit_config() -> anyhow::Result<()> {
     println!("\n{}", style("Current RPC URL:").cyan());
     println!("{}", config.rpc_url);
 
-    loop {
-        println!("\n{}", style("Select RPC endpoint:").cyan());
-        println!("1. Devnet   ({})", DEVNET_RPC);
-        println!("2. Mainnet  ({})", MAINNET_RPC);
-        println!("3. Testnet  ({})", TESTNET_RPC);
-        println!("4. Custom");
-        println!("5. Keep current");
+    let rpc_options = vec![
+        format!("Devnet ({})", DEVNET_RPC),
+        format!("Mainnet ({})", MAINNET_RPC),
+        format!("Testnet ({})", TESTNET_RPC),
+        "Custom".to_string(),
+        "Keep current".to_string(),
+    ];
 
-        let choice: String = prompt_data("Enter choice (1-5):")?;
+    let rpc_choice = Select::new("Select RPC endpoint:", rpc_options).prompt()?;
 
-        match choice.as_str() {
-            "1" => {
-                config.rpc_url = DEVNET_RPC.to_string();
-                break;
-            }
-            "2" => {
-                config.rpc_url = MAINNET_RPC.to_string();
-                break;
-            }
-            "3" => {
-                config.rpc_url = TESTNET_RPC.to_string();
-                break;
-            }
-            "4" => {
-                config.rpc_url = prompt_data("Enter RPC URL:")?;
-                break;
-            }
-            "5" => break,
-            _ => {
-                println!("{}", style("Invalid choice, please try again").red());
-                continue;
-            }
-        };
+    match rpc_choice.as_str() {
+        s if s.starts_with("Devnet") => config.rpc_url = DEVNET_RPC.to_string(),
+        s if s.starts_with("Mainnet") => config.rpc_url = MAINNET_RPC.to_string(),
+        s if s.starts_with("Testnet") => config.rpc_url = TESTNET_RPC.to_string(),
+        "Custom" => config.rpc_url = prompt_data("Enter RPC URL:")?,
+        _ => {}
     }
 
-    // Edit Commitment level
     println!("\n{}", style("Current Commitment Level:").cyan());
     println!("{:?}", config.commitment_level);
 
-    loop {
-        println!("\n{}", style("Select commitment level:").cyan());
-        println!("1. Processed");
-        println!("2. Confirmed");
-        println!("3. Finalized");
-        println!("4. Keep current");
+    let commitment_options = vec!["Processed", "Confirmed", "Finalized", "Keep current"];
+    let commitment_choice = Select::new("Select commitment level:", commitment_options).prompt()?;
 
-        let commitment_choice: String = prompt_data("Enter choice (1-4):")?;
-
-        match commitment_choice.as_str() {
-            "1" => {
-                config.commitment_level = CommitmentLevel::Processed;
-                break;
-            }
-            "2" => {
-                config.commitment_level = CommitmentLevel::Confirmed;
-                break;
-            }
-            "3" => {
-                config.commitment_level = CommitmentLevel::Finalized;
-                break;
-            }
-            "4" => break,
-            _ => {
-                println!("{}", style("Invalid choice, please try again").red());
-                continue;
-            }
-        };
+    match commitment_choice {
+        "Processed" => config.commitment_level = CommitmentLevel::Processed,
+        "Confirmed" => config.commitment_level = CommitmentLevel::Confirmed,
+        "Finalized" => config.commitment_level = CommitmentLevel::Finalized,
+        _ => {}
     }
 
-    // Edit Keypair path
     println!("\n{}", style("Current Keypair Path:").cyan());
     println!("{}", config.keypair_path.display());
 
-    let edit_keypair = loop {
-        let input: String = prompt_data("Edit keypair path? (y/n):")?;
-        match input.to_lowercase().as_str() {
-            "y" | "yes" => break true,
-            "n" | "no" => break false,
-            _ => {
-                println!("{}", style("Please enter 'y' or 'n'").red());
-                continue;
-            }
-        }
-    };
+    let edit_keypair = Confirm::new("Edit keypair path?")
+        .with_default(false)
+        .prompt()?;
 
     if edit_keypair {
         let default_keypair = dirs::home_dir()
-            .unwrap_or_default()
+            .expect("Could not determine home directory")
             .join(".config/solana/id.json");
 
         loop {

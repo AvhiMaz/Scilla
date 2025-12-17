@@ -39,6 +39,22 @@ pub struct ScillaConfig {
     pub keypair_path: PathBuf,
 }
 
+impl Default for ScillaConfig {
+    fn default() -> Self {
+        use crate::constants::DEVNET_RPC;
+
+        let default_keypair = home_dir()
+            .expect("Could not determine home directory")
+            .join(".config/solana/id.json");
+
+        Self {
+            rpc_url: DEVNET_RPC.to_string(),
+            commitment_level: CommitmentLevel::Confirmed,
+            keypair_path: default_keypair,
+        }
+    }
+}
+
 impl ScillaConfig {
     pub fn load() -> Result<ScillaConfig, ScillaError> {
         let scilla_config_path = scilla_config_path();
