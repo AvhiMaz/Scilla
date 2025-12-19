@@ -5,8 +5,114 @@ use {
     solana_keypair::{EncodableKey, Keypair, Signature, Signer},
     solana_message::Message,
     solana_transaction::Transaction,
-    std::path::Path,
+    std::{path::Path, str::FromStr},
 };
+
+#[derive(Debug, Clone, Copy)]
+pub struct Commission(u8);
+
+impl Commission {
+    pub fn value(&self) -> u8 {
+        self.0
+    }
+}
+
+impl FromStr for Commission {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Ok(Commission(0)); // default to 0%
+        }
+        let commission: u8 = trimmed
+            .parse()
+            .map_err(|_| anyhow!("Invalid commission: {}. Must be a number", trimmed))?;
+        if commission > 100 {
+            bail!("Commission must be between 0 and 100, got {}", commission);
+        }
+        Ok(Commission(commission))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SolAmount(f64);
+
+impl SolAmount {
+    pub fn value(&self) -> f64 {
+        self.0
+    }
+
+    pub fn to_lamports(&self) -> u64 {
+        sol_to_lamports(self.0)
+    }
+}
+
+impl FromStr for SolAmount {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            bail!("Amount cannot be empty. Please enter a SOL amount");
+        }
+        let sol: f64 = trimmed
+            .parse()
+            .map_err(|_| anyhow!("Invalid amount: {}. Must be a valid number", trimmed))?;
+        if sol <= 0.0 {
+            bail!("Amount must be greater than 0, got {}", sol);
+        }
+        if !sol.is_finite() {
+            bail!("Amount must be a finite number");
+        }
+        let lamports = sol * LAMPORTS_PER_SOL as f64;
+        if lamports > u64::MAX as f64 {
+            bail!("Amount too large: {} SOL would overflow", sol);
+        }
+        Ok(SolAmount(sol))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OptionalSolAmount(Option<f64>);
+
+impl OptionalSolAmount {
+    pub fn to_lamports(&self) -> u64 {
+        match self.0 {
+            Some(sol) => sol_to_lamports(sol),
+            None => 0,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_none()
+    }
+}
+
+impl FromStr for OptionalSolAmount {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Ok(OptionalSolAmount(None));
+        }
+        let sol: f64 = trimmed
+            .parse()
+            .map_err(|_| anyhow!("Invalid amount: {}. Must be a valid number", trimmed))?;
+        if sol <= 0.0 {
+            bail!("Amount must be greater than 0, got {}", sol);
+        }
+        if !sol.is_finite() {
+            bail!("Amount must be a finite number");
+        }
+        let lamports = sol * LAMPORTS_PER_SOL as f64;
+        if lamports > u64::MAX as f64 {
+            bail!("Amount too large: {} SOL would overflow", sol);
+        }
+        Ok(OptionalSolAmount(Some(sol)))
+    }
+}
 
 pub fn sol_to_lamports(sol: f64) -> u64 {
     (sol * LAMPORTS_PER_SOL as f64) as u64

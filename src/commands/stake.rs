@@ -4,7 +4,7 @@ use {
         constants::ACTIVE_STAKE_EPOCH_BOUND,
         context::ScillaContext,
         error::ScillaResult,
-        misc::helpers::{build_and_send_tx, lamports_to_sol, sol_to_lamports},
+        misc::helpers::{SolAmount, build_and_send_tx, lamports_to_sol, sol_to_lamports},
         prompt::prompt_data,
         ui::show_spinner,
     },
@@ -84,11 +84,11 @@ impl StakeCommand {
                 let stake_pubkey: Pubkey =
                     prompt_data("Enter Stake Account Pubkey to Withdraw from:")?;
                 let recipient: Pubkey = prompt_data("Enter Recipient Address:")?;
-                let amount: f64 = prompt_data("Enter Amount to Withdraw (SOL):")?;
+                let amount: SolAmount = prompt_data("Enter Amount to Withdraw (SOL):")?;
 
                 show_spinner(
                     self.spinner_msg(),
-                    process_withdraw_stake(ctx, &stake_pubkey, &recipient, amount),
+                    process_withdraw_stake(ctx, &stake_pubkey, &recipient, amount.value()),
                 )
                 .await?;
             }
@@ -162,10 +162,6 @@ async fn process_withdraw_stake(
     recipient: &Pubkey,
     amount_sol: f64,
 ) -> anyhow::Result<()> {
-    if amount_sol <= 0.0 {
-        bail!("Withdrawal amount must be greater than 0");
-    }
-
     let amount_lamports = sol_to_lamports(amount_sol);
 
     let account = ctx.rpc().get_account(stake_pubkey).await?;

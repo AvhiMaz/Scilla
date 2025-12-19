@@ -3,7 +3,7 @@ use {
         ScillaContext, ScillaResult,
         commands::CommandExec,
         misc::helpers::{
-            build_and_send_tx, lamports_to_sol, parse_commission, parse_sol_amount,
+            Commission, OptionalSolAmount, build_and_send_tx, lamports_to_sol,
             read_keypair_from_path,
         },
         prompt::prompt_data,
@@ -63,8 +63,7 @@ impl VoteCommand {
                 let account_keypair_path: PathBuf = prompt_data("Enter Account Keypair Path:")?;
                 let identity_keypair_path: PathBuf = prompt_data("Enter Identity Keypair Path:")?;
                 let withdraw_keypair_path: PathBuf = prompt_data("Enter Withdraw Keypair Path:")?;
-                let commission_str: String = prompt_data("Enter Commission 0-100 (default 0):")?;
-                let commission = parse_commission(&commission_str)?;
+                let commission: Commission = prompt_data("Enter Commission 0-100 (default 0):")?;
 
                 let account_keypair = read_keypair_from_path(&account_keypair_path)?;
 
@@ -79,7 +78,7 @@ impl VoteCommand {
                         &account_keypair,
                         &identity_keypair,
                         &withdraw_keypair,
-                        commission,
+                        commission.value(),
                     ),
                 )
                 .await?;
@@ -109,9 +108,8 @@ impl VoteCommand {
                     prompt_data("Enter Authorized Withdraw Keypair Path:")?;
                 let recipient_address: Pubkey = prompt_data("Enter Recipient Address:")?;
 
-                let amount_str: String =
+                let amount: OptionalSolAmount =
                     prompt_data("Enter withdraw amount in SOL (empty for max):")?;
-                let amount = parse_sol_amount(&amount_str)?;
                 let authorized_keypair = read_keypair_from_path(&authorized_keypair_path)?;
 
                 show_spinner(
@@ -121,7 +119,7 @@ impl VoteCommand {
                         &vote_account_pubkey,
                         &authorized_keypair,
                         &recipient_address,
-                        amount,
+                        amount.to_lamports(),
                     ),
                 )
                 .await?;
