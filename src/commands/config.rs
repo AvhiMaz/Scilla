@@ -2,7 +2,6 @@ use {
     crate::{
         commands::CommandExec,
         config::{ScillaConfig, scilla_config_path},
-        constants::{DEVNET_RPC, MAINNET_RPC, TESTNET_RPC},
         error::ScillaResult,
         prompt::prompt_data,
     },
@@ -43,6 +42,41 @@ impl fmt::Display for ConfigCommand {
         };
         write!(f, "{}", command)
     }
+}
+
+#[derive(Debug, Clone)]
+enum ConfigField {
+    RpcUrl,
+    CommitmentLevel,
+    KeypairPath,
+}
+
+impl fmt::Display for ConfigField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigField::RpcUrl => write!(f, "RPC URL"),
+            ConfigField::CommitmentLevel => write!(f, "Commitment Level"),
+            ConfigField::KeypairPath => write!(f, "Keypair Path"),
+        }
+    }
+}
+
+impl ConfigField {
+    fn all() -> Vec<Self> {
+        vec![
+            ConfigField::RpcUrl,
+            ConfigField::CommitmentLevel,
+            ConfigField::KeypairPath,
+        ]
+    }
+}
+
+fn get_commitment_levels() -> Vec<CommitmentLevel> {
+    vec![
+        CommitmentLevel::Processed,
+        CommitmentLevel::Confirmed,
+        CommitmentLevel::Finalized,
+    ]
 }
 
 impl ConfigCommand {
@@ -117,93 +151,45 @@ pub async fn generate_config() -> anyhow::Result<()> {
         .prompt()?;
 
     let config = if use_defaults {
-        let mut config = ScillaConfig::default();
+        let config = ScillaConfig::default();
 
         println!("\n{}", style("Using default configuration:").cyan());
         println!("  RPC: {}", config.rpc_url);
         println!("  Commitment: {:?}", config.commitment_level);
-        println!("  Default keypair: {}", config.keypair_path.display());
+        println!("  Keypair: {}", config.keypair_path.display());
 
-        let keypair_path = loop {
-            let keypair_input: PathBuf = prompt_data(&format!(
-                "\nEnter keypair path (press Enter for default: {}): ",
-                config.keypair_path.display()
-            ))?;
-
-            let keypair_path = if keypair_input.as_os_str().is_empty() {
-                config.keypair_path.clone()
-            } else {
-                keypair_input
-            };
-
-            if !keypair_path.exists() {
-                println!(
-                    "{}",
-                    style(format!(
-                        "Keypair file not found at: {}",
-                        keypair_path.display()
-                    ))
-                    .red()
-                );
-                continue;
-            }
-
-            break keypair_path;
-        };
-
-        config.keypair_path = keypair_path;
         config
     } else {
-        let cluster_options = vec!["Devnet", "Mainnet", "Testnet", "Custom"];
-        let cluster_choice = Select::new("Select cluster:", cluster_options).prompt()?;
+        let rpc_url: String = prompt_data("Enter RPC URL:")?;
 
-        let rpc_url = match cluster_choice {
-            "Devnet" => DEVNET_RPC.to_string(),
-            "Mainnet" => MAINNET_RPC.to_string(),
-            "Testnet" => TESTNET_RPC.to_string(),
-            "Custom" => prompt_data("Enter custom RPC URL:")?,
-            _ => unreachable!(),
-        };
-
-        let commitment_choice = Select::new(
-            "Select commitment level:",
-            vec!["Processed", "Confirmed", "Finalized"],
-        )
-        .prompt()?;
-
-        let commitment_level = match commitment_choice {
-            "Processed" => CommitmentLevel::Processed,
-            "Confirmed" => CommitmentLevel::Confirmed,
-            "Finalized" => CommitmentLevel::Finalized,
-            _ => unreachable!(),
-        };
+        let commitment_level =
+            Select::new("Select commitment level:", get_commitment_levels()).prompt()?;
 
         let default_keypair_path = ScillaConfig::default().keypair_path;
 
         let keypair_path = loop {
             let keypair_input: PathBuf = prompt_data(&format!(
-                "Enter keypair path (default: {}): ",
+                "Enter keypair path (press Enter to use default: {}): ",
                 default_keypair_path.display()
             ))?;
-            let keypair_path = if keypair_input.as_os_str().is_empty() {
-                default_keypair_path.clone()
-            } else {
-                keypair_input
-            };
 
-            if !keypair_path.exists() {
+            if keypair_input.as_os_str().is_empty() {
+                break default_keypair_path.clone();
+            }
+
+            if !keypair_input.exists() {
                 println!(
                     "{}",
                     style(format!(
                         "Keypair file not found at: {}",
-                        keypair_path.display()
+                        keypair_input.display()
                     ))
                     .red()
                 );
                 continue;
             }
 
-            break keypair_path;
+            break keypair_input;
         };
 
         ScillaConfig {
@@ -253,67 +239,47 @@ async fn edit_config() -> anyhow::Result<()> {
     );
 
     // Prompt user to select which field to edit
-    let field_options = vec!["RPC URL", "Commitment Level", "Keypair Path"];
-    let field_choice = Select::new("\nSelect field to edit:", field_options).prompt()?;
+    let field_options = ConfigField::all();
+    let selected_field = Select::new("\nSelect field to edit:", field_options).prompt()?;
 
-    match field_choice {
-        "RPC URL" => {
-            let cluster_options = vec!["Devnet", "Mainnet", "Testnet", "Custom"];
-            let cluster_choice = Select::new("Select cluster:", cluster_options).prompt()?;
-
-            config.rpc_url = match cluster_choice {
-                "Devnet" => DEVNET_RPC.to_string(),
-                "Mainnet" => MAINNET_RPC.to_string(),
-                "Testnet" => TESTNET_RPC.to_string(),
-                "Custom" => prompt_data("Enter custom RPC URL:")?,
-                _ => unreachable!(),
-            };
+    match selected_field {
+        ConfigField::RpcUrl => {
+            config.rpc_url = prompt_data("Enter RPC URL:")?;
         }
-        "Commitment Level" => {
-            let commitment_choice = Select::new(
-                "Select commitment level:",
-                vec!["Processed", "Confirmed", "Finalized"],
-            )
-            .prompt()?;
-
-            config.commitment_level = match commitment_choice {
-                "Processed" => CommitmentLevel::Processed,
-                "Confirmed" => CommitmentLevel::Confirmed,
-                "Finalized" => CommitmentLevel::Finalized,
-                _ => unreachable!(),
-            };
+        ConfigField::CommitmentLevel => {
+            config.commitment_level =
+                Select::new("Select commitment level:", get_commitment_levels()).prompt()?;
         }
-        "Keypair Path" => {
+        ConfigField::KeypairPath => {
             let default_keypair_path = ScillaConfig::default().keypair_path;
 
             loop {
                 let keypair_input: PathBuf = prompt_data(&format!(
-                    "Enter new keypair path (default: {}): ",
+                    "Enter new keypair path (leave empty to use default: {}): ",
                     default_keypair_path.display()
                 ))?;
-                let keypair_path = if keypair_input.as_os_str().is_empty() {
-                    default_keypair_path.clone()
-                } else {
-                    keypair_input
-                };
 
-                if !keypair_path.exists() {
+                if keypair_input.as_os_str().is_empty() {
+                    config.keypair_path = default_keypair_path.clone();
+                    break;
+                }
+
+                if !keypair_input.exists() {
                     println!(
                         "{}",
                         style(format!(
                             "Keypair file not found at: {}",
-                            keypair_path.display()
+                            keypair_input.display()
                         ))
                         .red()
                     );
                     continue;
                 }
 
-                config.keypair_path = keypair_path;
+                config.keypair_path = keypair_input;
                 break;
             }
         }
-        _ => unreachable!(),
     }
 
     // Write updated config
