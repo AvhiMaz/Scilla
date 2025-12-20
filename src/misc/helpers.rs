@@ -67,11 +67,8 @@ impl FromStr for SolAmount {
         let sol = trim_and_parse::<f64>(s, "amount")?
             .ok_or_else(|| anyhow!("Amount cannot be empty. Please enter a SOL amount"))?;
 
-        if sol <= 0.0 {
-            bail!("Amount must be greater than 0, got {}", sol);
-        }
-        if !sol.is_finite() {
-            bail!("Amount must be a finite number");
+        if sol <= 0.0 || !sol.is_finite() {
+            bail!("Amount must be a positive finite number, got {}", sol);
         }
         if sol * LAMPORTS_PER_SOL as f64 > u64::MAX as f64 {
             bail!("Amount too large: {} SOL would overflow", sol);
