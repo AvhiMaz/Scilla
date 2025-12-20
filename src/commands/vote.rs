@@ -3,8 +3,7 @@ use {
         ScillaContext, ScillaResult,
         commands::CommandExec,
         misc::helpers::{
-            Commission, OptionalSolAmount, build_and_send_tx, lamports_to_sol,
-            read_keypair_from_path,
+            Commission, SolAmount, build_and_send_tx, lamports_to_sol, read_keypair_from_path,
         },
         prompt::prompt_data,
         ui::show_spinner,
@@ -108,8 +107,7 @@ impl VoteCommand {
                     prompt_data("Enter Authorized Withdraw Keypair Path:")?;
                 let recipient_address: Pubkey = prompt_data("Enter Recipient Address:")?;
 
-                let amount: OptionalSolAmount =
-                    prompt_data("Enter withdraw amount in SOL (empty for max):")?;
+                let amount: SolAmount = prompt_data("Enter withdraw amount in SOL:")?;
                 let authorized_keypair = read_keypair_from_path(&authorized_keypair_path)?;
 
                 show_spinner(
