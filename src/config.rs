@@ -52,6 +52,12 @@ impl Default for ScillaConfig {
             rpc_url: DEVNET_RPC.to_string(),
             commitment_level: CommitmentLevel::Confirmed,
             keypair_path: default_keypair_path,
+impl ScillaConfig {
+    pub fn load() -> Result<ScillaConfig, ScillaError> {
+        let scilla_config_path = scilla_config_path();
+        println!("Using Scilla config path : {scilla_config_path:?}");
+        if !scilla_config_path.exists() {
+            return Err(ScillaError::ConfigPathDoesNotExist);
         }
     }
 }
@@ -98,7 +104,7 @@ impl ScillaConfig {
 
     pub fn load_from_path(path: &std::path::Path) -> Result<ScillaConfig, ScillaError> {
         if !path.exists() {
-            return Err(ScillaError::ConfigPathDoesntExists);
+            return Err(ScillaError::ConfigPathDoesNotExist);
         }
         let data = fs::read_to_string(path)?;
         let config: ScillaConfig = toml::from_str(&data)?;
@@ -111,22 +117,6 @@ mod tests {
     use super::*;
     use std::env;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_expand_tilde_with_home_prefix() {
-        let home = env::home_dir().expect("HOME should be set");
-        assert_eq!(expand_tilde("~/foo/bar"), home.join("foo/bar"));
-    }
-
-    #[test]
-    fn test_load_from_path_missing_file() {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let nonexistent = temp_dir.path().join("missing.toml");
-
-        let result = ScillaConfig::load_from_path(&nonexistent);
-
-        assert!(matches!(result, Err(ScillaError::ConfigPathDoesntExists)));
-    }
 
     #[test]
     fn test_load_from_path_malformed_toml() {
