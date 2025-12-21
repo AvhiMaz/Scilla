@@ -118,7 +118,7 @@ async fn show_config() -> anyhow::Result<()> {
             Cell::new(config.keypair_path.display().to_string()),
         ]);
 
-    println!("\n{}", style("CURRENT CONFIG").green().bold());
+    println!("\n{}", style("SCILLA CONFIG").green().bold());
     println!("{}", table);
 
     Ok(())
