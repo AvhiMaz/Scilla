@@ -1,7 +1,7 @@
 use {
     crate::{
         commands::CommandExec,
-        constants::ACTIVE_STAKE_EPOCH_BOUND,
+        constants::{ACTIVE_STAKE_EPOCH_BOUND, DEFAULT_EPOCH_LIMIT},
         context::ScillaContext,
         error::ScillaResult,
         misc::helpers::{SolAmount, build_and_send_tx, lamports_to_sol, sol_to_lamports},
@@ -9,12 +9,14 @@ use {
         ui::show_spinner,
     },
     anyhow::bail,
+    bincode::Options,
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
     solana_pubkey::Pubkey,
     solana_stake_interface::{
         instruction::{deactivate_stake, withdraw},
         program::id as stake_program_id,
+        stake_history::{StakeHistory, StakeHistoryEntry},
         state::StakeStateV2,
     },
     std::fmt,
@@ -97,14 +99,9 @@ impl StakeCommand {
             StakeCommand::Split => todo!(),
             StakeCommand::Show => todo!(),
             StakeCommand::History => {
-                let stake_pubkey: Pubkey =
-                    prompt_data("Enter Stake Account Pubkey to view history:")?;
-                show_spinner(
-                    self.spinner_msg(),
-                    process_stake_history(ctx, &stake_pubkey),
-                )
-                .await?;
+                show_spinner(self.spinner_msg(), process_stake_history(ctx)).await?;
             }
+
             StakeCommand::GoBack => return Ok(CommandExec::GoBack),
         }
 
@@ -258,75 +255,48 @@ async fn process_withdraw_stake(
     Ok(())
 }
 
-async fn process_stake_history(ctx: &ScillaContext, stake_pubkey: &Pubkey) -> anyhow::Result<()> {
-    let account = ctx.rpc().get_account(stake_pubkey).await?;
+async fn process_stake_history(ctx: &ScillaContext) -> anyhow::Result<()> {
+    const STAKE_HISTORY_SYSVAR: Pubkey =
+        Pubkey::from_str_const("SysvarStakeHistory1111111111111111111111111");
 
-    if account.owner != stake_program_id() {
-        bail!("Account is not owned by the stake program");
-    }
+    let account = ctx.rpc().get_account(&STAKE_HISTORY_SYSVAR).await?;
 
-    let signatures = ctx.rpc().get_signatures_for_address(stake_pubkey).await?;
+    let stake_history: StakeHistory = bincode::options()
+        .with_fixint_encoding()
+        .with_limit(account.data.len() as u64)
+        .deserialize(&account.data)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize StakeHistory: {}", e))?;
 
-    if signatures.is_empty() {
-        println!(
-            "\n{}",
-            style("No transaction history found for this stake account").yellow()
-        );
+    if stake_history.is_empty() {
+        println!("\n{}", style("No stake history available").yellow());
         return Ok(());
     }
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL).set_header(vec![
-        Cell::new("Slot").add_attribute(comfy_table::Attribute::Bold),
-        Cell::new("Signature").add_attribute(comfy_table::Attribute::Bold),
-        Cell::new("Status").add_attribute(comfy_table::Attribute::Bold),
-        Cell::new("Block Time").add_attribute(comfy_table::Attribute::Bold),
+        Cell::new("Epoch").add_attribute(comfy_table::Attribute::Bold),
+        Cell::new("Effective Stake").add_attribute(comfy_table::Attribute::Bold),
+        Cell::new("Activating Stake").add_attribute(comfy_table::Attribute::Bold),
+        Cell::new("Deactivating Stake").add_attribute(comfy_table::Attribute::Bold),
     ]);
 
-    for sig_info in signatures.iter().take(20) {
-        let status = if sig_info.err.is_none() {
-            style("Success").green().to_string()
-        } else {
-            style("Failed").red().to_string()
-        };
-
-        let block_time = sig_info
-            .block_time
-            .map(|ts| {
-                chrono::DateTime::from_timestamp(ts, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "Invalid time".to_string())
-            })
-            .unwrap_or_else(|| "~".to_string());
-
-        let short_sig = format!(
-            "{}...{}",
-            &sig_info.signature[..8],
-            &sig_info.signature[sig_info.signature.len() - 8..]
-        );
+    for (epoch, entry) in stake_history.iter().take(DEFAULT_EPOCH_LIMIT) {
+        let StakeHistoryEntry {
+            effective,
+            activating,
+            deactivating,
+        } = entry;
 
         table.add_row(vec![
-            Cell::new(sig_info.slot.to_string()),
-            Cell::new(short_sig),
-            Cell::new(status),
-            Cell::new(block_time),
+            Cell::new(epoch.to_string()),
+            Cell::new(lamports_to_sol(*effective)),
+            Cell::new(lamports_to_sol(*activating)),
+            Cell::new(lamports_to_sol(*deactivating)),
         ]);
     }
 
-    println!(
-        "\n{}",
-        style("STAKE ACCOUNT TRANSACTION HISTORY").green().bold()
-    );
-    println!("{}", style(format!("Account: {}", stake_pubkey)).cyan());
+    println!("\n{}", style("CLUSTER STAKE HISTORY").green().bold());
     println!("{}", table);
-    println!(
-        "\n{}",
-        style(format!(
-            "Showing last {} transactions",
-            signatures.len().min(20)
-        ))
-        .dim()
-    );
 
     Ok(())
 }
