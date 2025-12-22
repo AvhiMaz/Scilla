@@ -40,7 +40,7 @@ impl fmt::Display for ConfigCommand {
             ConfigCommand::Edit => "Edit ScillaConfig",
             ConfigCommand::GoBack => "Go back",
         };
-        write!(f, "{}", command)
+        write!(f, "{command}")
     }
 }
 
