@@ -6,13 +6,13 @@ use {
             address::AddressCommand,
             alt::AltCommand,
             cluster::ClusterCommand,
-            config::ConfigCommand,
+            config::ConfigCommand, program::ProgramCommand,
             main_command::MainCommand,
             navigation::NavigationTarget,
             program::{ProgramCommand, ProgramShared, build::BuildMode},
             stake::StakeCommand,
-            transaction::TransactionCommand,
-            vote::VoteCommand,
+           
+            transaction::TransactionCommand, vote::VoteCommand,
         },
         constants::{DEVNET_RPC, MAINNET_RPC, TESTNET_RPC},
         context::ScillaContext,
@@ -32,6 +32,7 @@ pub fn prompt_main_section() -> anyhow::Result<impl Command> {
             MainCommand::Stake,
             MainCommand::Program,
             MainCommand::Vote,
+            CommandGroup::Program,
             MainCommand::Transaction,
             MainCommand::AddressLookupTable,
             MainCommand::ScillaConfig,
@@ -40,6 +41,17 @@ pub fn prompt_main_section() -> anyhow::Result<impl Command> {
         ],
     )
     .prompt()?;
+
+    let command = match top_level {
+        CommandGroup::Cluster => Command::Cluster(prompt_cluster()?),
+        CommandGroup::Stake => Command::Stake(prompt_stake()?),
+        CommandGroup::Account => Command::Account(prompt_account()?),
+        CommandGroup::Vote => Command::Vote(prompt_vote()?),
+        CommandGroup::Program => Command::Program(prompt_program()?),
+        CommandGroup::ScillaConfig => Command::ScillaConfig(prompt_config()?),
+        CommandGroup::Transaction => Command::Transaction(prompt_transaction()?),
+        CommandGroup::Exit => Command::Exit,
+    };
 
     Ok(command)
 }
@@ -148,6 +160,16 @@ pub fn prompt_vote_section() -> anyhow::Result<VoteCommand> {
             VoteCommand::CloseVoteAccount,
             VoteCommand::GoBack,
         ],
+    )
+    .prompt()?;
+
+    Ok(choice)
+}
+
+fn prompt_program() -> anyhow::Result<ProgramCommand> {
+    let choice = Select::new(
+        "Program Command:",
+        vec![ProgramCommand::Extend, ProgramCommand::GoBack],
     )
     .prompt()?;
 
